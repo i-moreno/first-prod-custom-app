@@ -27,8 +27,8 @@ Shopify.Context.initialize({
   SESSION_STORAGE: new Shopify.Session.MemorySessionStorage(),
 });
 
-// Storing the currently active shops in memory will force them to re-login when your server restarts. You should
-// persist this object in your app.
+// Storing the currently active shops in memory will force them to re-login when your server restarts.
+// You should persist this object in your app.
 const ACTIVE_SHOPIFY_SHOPS = {};
 
 app.prepare().then(async () => {
