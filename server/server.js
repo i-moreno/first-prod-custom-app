@@ -2,10 +2,11 @@ import "@babel/polyfill";
 import dotenv from "dotenv";
 import "isomorphic-fetch";
 import createShopifyAuth, { verifyRequest } from "@shopify/koa-shopify-auth"; // https://github.com/Shopify/koa-shopify-auth
-import Shopify, { ApiVersion } from "@shopify/shopify-api";
+import Shopify, { ApiVersion, DataType } from "@shopify/shopify-api";
 import Koa from "koa";
 import next from "next";
 import Router from "koa-router";
+import koaBody from "koa-body";
 
 dotenv.config();
 const port = parseInt(process.env.PORT, 10) || 8081;
@@ -30,6 +31,7 @@ Shopify.Context.initialize({
 // Storing the currently active shops in memory will force them to re-login when your server restarts.
 // You should persist this object in your app.
 const ACTIVE_SHOPIFY_SHOPS = {};
+const SHOP_SETTINGS = {};
 
 app.prepare().then(async () => {
   const server = new Koa();
@@ -51,7 +53,7 @@ app.prepare().then(async () => {
           accessToken,
           path: "/webhooks",
           topic: "APP_UNINSTALLED",
-          webhookHandler: async (topic, shop, body) =>
+          webhookHandler: async (topic, shop) =>
             delete ACTIVE_SHOPIFY_SHOPS[shop],
         });
 
@@ -85,13 +87,87 @@ app.prepare().then(async () => {
   router.post(
     "/graphql",
     verifyRequest({ returnHeader: true }),
-    async (ctx, next) => {
+    async (ctx) => {
       await Shopify.Utils.graphqlProxy(ctx.req, ctx.res);
     }
   );
 
   router.get("(/_next/static/.*)", handleRequest); // Static content is clear
   router.get("/_next/webpack-hmr", handleRequest); // Webpack content is clear
+
+  // New routes used for the App
+  router.get("/settings", async (ctx) => {
+    const session = await Shopify.Utils.loadCurrentSession(ctx.req, ctx.res);
+    const shop = session.shop;
+
+    // This shop hasn't been seen yet, go through OAuth to create a session
+    if (session === undefined || ACTIVE_SHOPIFY_SHOPS[shop] === undefined) {
+      ctx.redirect(`/auth?shop=${shop}`);
+      return
+    }
+
+    // const shopSettings = ACTIVE_SHOPIFY_SHOPS[shop].settings;
+    if (!SHOP_SETTINGS[shop]) {
+      SHOP_SETTINGS[shop] = {};
+    }
+
+    const shopSettings = SHOP_SETTINGS[shop].settings;
+
+    if (!shopSettings) {
+      ctx.status = 200;
+      ctx.body = {
+        status: "EMPTY_SETTINGS",
+        data: undefined,
+      };
+
+      return;
+    }
+
+    const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+    const productDetails = await client.get({
+      path: `products/${shopSettings.productId}`,
+      type: DataType.JSON,
+    });
+
+    ctx.body = {
+      status: "OK_SETTINGS",
+      data: productDetails.body.product,
+    };
+
+    ctx.status = 200;
+  });
+
+  router.post("/settings", async (ctx) => {
+    const session = await Shopify.Utils.loadCurrentSession(ctx.req, ctx.res);
+    const shop = session.shop;
+
+    // This shop hasn't been seen yet, go through OAuth to create a session
+    if (session === undefined || ACTIVE_SHOPIFY_SHOPS[shop] === undefined) {
+      ctx.redirect(`/auth?shop=${shop}`);
+      return;
+    }
+
+    const productIdStruct = JSON.parse(ctx.request.body).productId.split("/");
+    const productId = productIdStruct[productIdStruct.length - 1];
+
+    // For simplicity, save the settings in an “Object“, in the target application. 
+    // In this way, you’re saving this data in a database.
+    SHOP_SETTINGS[shop].settings = { productId };
+
+    const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+    const productDetails = await client.get({
+      path: `products/${productId}`,
+      type: DataType.JSON
+    });
+
+    ctx.body = {
+      status: "OK_SETTINGS",
+      data: productDetails.body.product
+    };
+
+    ctx.status = 200;
+  });
+
   router.get("(.*)", async (ctx) => {
     const shop = ctx.query.shop;
 
@@ -104,6 +180,7 @@ app.prepare().then(async () => {
   });
 
   server.use(router.allowedMethods());
+  server.use(koaBody());
   server.use(router.routes());
   server.listen(port, () => {
     console.log(`> Ready on http://localhost:${port}`);
