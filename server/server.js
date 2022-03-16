@@ -131,7 +131,9 @@ app.prepare().then(async () => {
     if (!currentShop) {
       const newStore = new Store({ name: shop });
       await newStore.save();
+    }
 
+    if (!currentShop.productId) {
       ctx.status = 200;
       ctx.body = {
         status: "EMPTY_SETTINGS",
@@ -168,9 +170,10 @@ app.prepare().then(async () => {
     const productIdStruct = JSON.parse(ctx.request.body).productId.split("/");
     const productId = productIdStruct[productIdStruct.length - 1];
 
-    // For simplicity, save the settings in an “Object“, in the target application. 
     // In this way, you’re saving this data in a database.
-    SHOP_SETTINGS[shop].settings = { productId };
+    const currentShop = await Store.findOne({ name: shop });
+    currentShop.productId = productId;
+    await currentShop.save();
 
     const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
     const productDetails = await client.get({
