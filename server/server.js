@@ -7,6 +7,8 @@ import Koa from "koa";
 import next from "next";
 import Router from "koa-router";
 import koaBody from "koa-body";
+import mongoose from "mongoose";
+import Store from "./schemas/store";
 
 dotenv.config();
 const port = parseInt(process.env.PORT, 10) || 8081;
@@ -15,6 +17,24 @@ const app = next({
   dev,
 });
 const handle = app.getRequestHandler();
+
+async function main() {
+  await mongoose.connect("mongodb://127.0.0.1:27017/shopify_custom_app_dev");
+}
+
+main().catch(err => console.log(err));
+
+// async function dummyCreation() {
+//   try {
+//     const dummyStore = new Store({ name: "Chars store 23" });
+//     console.log("A",dummyStore)
+//     console.log("B", dummyStore.name)
+//     await dummyStore.save();
+//   } catch (error) {
+//     console.log("Error implementing save", error)
+//   }
+// }
+
 
 Shopify.Context.initialize({
   API_KEY: process.env.SHOPIFY_API_KEY,
@@ -106,26 +126,24 @@ app.prepare().then(async () => {
       return
     }
 
-    // const shopSettings = ACTIVE_SHOPIFY_SHOPS[shop].settings;
-    if (!SHOP_SETTINGS[shop]) {
-      SHOP_SETTINGS[shop] = {};
-    }
+    const currentShop = await Store.findOne({ name: shop });
 
-    const shopSettings = SHOP_SETTINGS[shop].settings;
+    if (!currentShop) {
+      const newStore = new Store({ name: shop });
+      await newStore.save();
 
-    if (!shopSettings) {
       ctx.status = 200;
       ctx.body = {
         status: "EMPTY_SETTINGS",
         data: undefined,
       };
 
-      return;
+      return
     }
 
     const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
     const productDetails = await client.get({
-      path: `products/${shopSettings.productId}`,
+      path: `products/${currentShop.productId}`,
       type: DataType.JSON,
     });
 
