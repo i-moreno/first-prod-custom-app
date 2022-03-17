@@ -56,6 +56,7 @@ class MyApp extends App {
       <AppProvider i18n={translations}>
         <Provider
           config={{
+            // eslint-disable-next-line no-undef
             apiKey: API_KEY,
             host: host,
             forceRedirect: true,
