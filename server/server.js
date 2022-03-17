@@ -2,13 +2,14 @@ import "@babel/polyfill";
 import dotenv from "dotenv";
 import "isomorphic-fetch";
 import createShopifyAuth, { verifyRequest } from "@shopify/koa-shopify-auth"; // https://github.com/Shopify/koa-shopify-auth
-import Shopify, { ApiVersion, DataType } from "@shopify/shopify-api";
+import Shopify, { ApiVersion, DataType, AuthQuery } from "@shopify/shopify-api";
 import Koa from "koa";
 import next from "next";
 import Router from "koa-router";
 import koaBody from "koa-body";
 import mongoose from "mongoose";
 import Store from "./schemas/store";
+import RedisStore from "./redis";
 
 dotenv.config();
 const port = parseInt(process.env.PORT, 10) || 8081;
@@ -18,23 +19,15 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 
+// Connect to the database
 async function main() {
   await mongoose.connect("mongodb://127.0.0.1:27017/shopify_custom_app_dev");
 }
 
 main().catch(err => console.log(err));
 
-// async function dummyCreation() {
-//   try {
-//     const dummyStore = new Store({ name: "Chars store 23" });
-//     console.log("A",dummyStore)
-//     console.log("B", dummyStore.name)
-//     await dummyStore.save();
-//   } catch (error) {
-//     console.log("Error implementing save", error)
-//   }
-// }
-
+// Create a new instance of the custom storage class
+const sessionStorage = new RedisStore();
 
 Shopify.Context.initialize({
   API_KEY: process.env.SHOPIFY_API_KEY,
@@ -45,13 +38,16 @@ Shopify.Context.initialize({
   IS_EMBEDDED_APP: true,
   // This should be replaced with your preferred storage strategy, more information
   // at https://github.com/Shopify/shopify-node-api/blob/main/docs/issues.md#notes-on-session-handling
-  SESSION_STORAGE: new Shopify.Session.MemorySessionStorage(),
+  SESSION_STORAGE: new Shopify.Session.CustomSessionStorage(
+    sessionStorage.storeCallback.bind(sessionStorage),
+    sessionStorage.loadCallback.bind(sessionStorage),
+    sessionStorage.deleteCallback.bind(sessionStorage)
+  )
 });
 
 // Storing the currently active shops in memory will force them to re-login when your server restarts.
 // You should persist this object in your app.
 const ACTIVE_SHOPIFY_SHOPS = {};
-const SHOP_SETTINGS = {};
 
 app.prepare().then(async () => {
   const server = new Koa();
