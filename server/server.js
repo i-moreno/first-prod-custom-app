@@ -20,11 +20,12 @@ const app = next({
 const handle = app.getRequestHandler();
 
 // Connect to the database
+const dbUri = process.env.MONGODB_URI;
 async function main() {
-  await mongoose.connect("mongodb://127.0.0.1:27017/shopify_custom_app_dev");
+  await mongoose.connect(dbUri);
 }
 
-main().catch(err => console.log(err));
+main().catch(err => console.log("ERROR CONNECTING TO DB", err));
 
 // Create a new instance of the custom storage class
 const sessionStorage = new RedisStore();
