@@ -8,8 +8,8 @@ import next from "next";
 import Router from "koa-router";
 import koaBody from "koa-body";
 import mongoose from "mongoose";
-import Store from "./schemas/store";
-import RedisStore from "./redis";
+import Store from "./models/store";
+import SessionStorage from "./utils/custom-storage";
 
 dotenv.config();
 const port = parseInt(process.env.PORT, 10) || 8081;
@@ -19,16 +19,17 @@ const app = next({
 });
 const handle = app.getRequestHandler();
 
-// Connect to the database
-const dbUri = process.env.MONGODB_URI;
-async function main() {
-  await mongoose.connect(dbUri);
+// MongoDB connection
+const mongoUrl = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/shopify_custom_app_dev";
+
+const connectMongo = async () => {
+  await mongoose.connect(mongoUrl);
 }
 
-main().catch(err => console.log("ERROR CONNECTING TO DB", err));
+connectMongo().catch(err => console.log("ERROR CONNECTING TO DB", err));
 
 // Create a new instance of the custom storage class
-const sessionStorage = new RedisStore();
+// const sessionStorage = new RedisStore();
 
 Shopify.Context.initialize({
   API_KEY: process.env.SHOPIFY_API_KEY,
@@ -37,13 +38,7 @@ Shopify.Context.initialize({
   HOST_NAME: process.env.HOST.replace(/https:\/\/|\/$/g, ""),
   API_VERSION: ApiVersion.October20,
   IS_EMBEDDED_APP: true,
-  // This should be replaced with your preferred storage strategy, more information
-  // at https://github.com/Shopify/shopify-node-api/blob/main/docs/issues.md#notes-on-session-handling
-  SESSION_STORAGE: new Shopify.Session.CustomSessionStorage(
-    sessionStorage.storeCallback.bind(sessionStorage),
-    sessionStorage.loadCallback.bind(sessionStorage),
-    sessionStorage.deleteCallback.bind(sessionStorage)
-  )
+  SESSION_STORAGE: SessionStorage
 });
 
 // Storing the currently active shops in memory will force them to re-login when your server restarts.
