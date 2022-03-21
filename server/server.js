@@ -26,7 +26,7 @@ const connectMongo = async () => {
   await mongoose.connect(mongoUrl);
 }
 
-connectMongo().catch(err => console.log("ERROR CONNECTING TO DB", err));
+connectMongo().catch(err => console.log("ERROR CONNECTING DB", err));
 
 // Create a new instance of the custom storage class
 // const sessionStorage = new RedisStore();
